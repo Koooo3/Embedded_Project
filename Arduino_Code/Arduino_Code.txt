@@ -1,0 +1,111 @@
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+
+Adafruit_MPU6050 mpu; //Initializing an MPU Object
+
+void setup(void) {
+	Serial.begin(9600); //UART Serial Communication with PIC at 9600 Baud Rate
+
+	// Finding the MPU
+	if (!mpu.begin()) {
+		Serial.println("Failed to find MPU6050 chip");
+		while (1) {
+		  delay(10);
+		}
+	}
+
+  //MPU Found!
+	// set accelerometer range to +-8G
+	mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+
+	// set gyro range to +- 500 deg/s
+	mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+
+	// set filter bandwidth to 21 Hz
+	mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+
+	delay(100); //Delay for things to stabalize
+}
+
+void loop() {
+	/* Get new sensor events with the readings */
+	sensors_event_t a, g, temp;
+	mpu.getEvent(&a, &g, &temp);
+
+  // a.acceleration.x is the tilt around the X-axis (Left - Right)
+  // a.acceleration.y is the tilt around the Y-axis (Forward - Backward)
+
+  byte sendbyte; //  Sensor Readings (bytes) that are going to be sent to the PIC
+  byte backward = 0xFF;
+  byte forward = 0xFE;
+  byte right = 0XFD;
+  byte left = 0XFC;
+  byte stop = 0XFB;
+  
+  if(a.acceleration.x >= 5) // Go-to Right Threshold
+  {
+    Serial.write(right);
+    delay(500);
+      while(a.acceleration.x >= 5) // While we are tilting right and above the threshold
+      {
+        sendbyte=(a.acceleration.x - 2) * 250 / 10; // Scale the sensor readings from 0 - 10 to 0 - 250 (the -2 is for lowering the initial speed)
+        Serial.print((a.acceleration.x)); // Just to display the readings in the Arduino IDE Serial Monitor to get an idea of what we are sending.
+        Serial.write(sendbyte); // Send the scaled reading to be used in the PWM Module on the PI
+        delay(2);
+        mpu.getEvent(&a, &g, &temp); // Keep reading sensor data while in this loop
+      }
+  }
+
+
+  if(a.acceleration.x <= -5) // Go-to Left Threshold
+  {
+    Serial.write(left);
+    delay(500);
+      while(a.acceleration.x <= -5) // While we are tilting left and above the threshold
+      {
+        sendbyte=(a.acceleration.x - 2) * 250 / 10; // Scale the sensor readings from 0 - 10 to 0 - 250 (the -2 is for lowering the initial speed)
+        sendbyte=sendbyte*-1; // Convert readings from negative to positive (The sign will only affect direction)
+        Serial.print((a.acceleration.x));
+        Serial.write(sendbyte); // Send the scaled reading to be used in the PWM Module on the PI
+        delay(2);
+        mpu.getEvent(&a, &g, &temp); // Keep reading sensor data while in this loop
+      }
+  }
+
+
+  if(a.acceleration.y >= 2) // Go-to Forward Threshold
+  {
+    Serial.write(forward); // Signal to the PIC that we are going forward
+    delay(500);
+      while(a.acceleration.y >= 2) // While we are tilting forward and above the threshold
+      {
+        sendbyte=(a.acceleration.y - 2) * 250 / 10; // Scale the sensor readings from 0 - 10 to 0 - 250
+        Serial.print((a.acceleration.y));
+        Serial.write(sendbyte); // Send the scaled reading to be used in the PWM Module on the PIC
+        delay(2);
+        mpu.getEvent(&a, &g, &temp); // Keep reading sensor data while in this loop
+      }
+  }
+
+
+  if(a.acceleration.y < -2) // Go-to Backward Threshold
+  {
+    Serial.write(backward);
+    delay(500);
+      while(a.acceleration.y < -2) // While we are tilting backward and above the threshold
+      {
+        sendbyte=(a.acceleration.y + 2) * 250 / 10; // Scale the sensor readings from 0 - 10 to 0 - 250
+        sendbyte=sendbyte * -1; // Convert readings from negative to positive (The sign will only affect direction)
+        Serial.print((a.acceleration.y));
+        Serial.write(sendbyte); // Send the scaled reading to be used in the PWM Module on the PI
+        delay(2);
+        mpu.getEvent(&a, &g, &temp); // Keep reading sensor data while in this loop
+      }
+
+  }
+
+  Serial.write(stop); // Signal to the PIC that we are in Rest/Stop state. Speed is zero. We are not tilting to any direction.
+  delay(2);
+}
+ 
